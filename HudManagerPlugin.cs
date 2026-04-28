@@ -7,14 +7,16 @@ namespace ShaedyHudManager;
 public class HudManagerPlugin : BasePlugin
 {
     public override string ModuleName => "shaedy HUD Manager";
-    public override string ModuleVersion => "1.1.0";
+    public override string ModuleVersion => "1.2.0";
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
+    private readonly Dictionary<ulong, float> _lastSentTime = new();
+    private const float ResendInterval = 1.5f;
 
     public override void Load(bool hotReload)
     {
-        AddTimer(0.3f, Tick, TimerFlags.REPEAT);
+        AddTimer(0.1f, Tick, TimerFlags.REPEAT);
     }
 
     private void Tick()
@@ -23,13 +25,19 @@ public class HudManagerPlugin : BasePlugin
         if (messages.Count == 0)
         {
             _lastShownSequence.Clear();
+            _lastSentTime.Clear();
             return;
         }
 
+        float now = Server.CurrentTime;
         var players = Utilities.GetPlayers();
+
         foreach (var (steamId, html, duration, sequenceId) in messages)
         {
-            if (_lastShownSequence.TryGetValue(steamId, out var lastSeq) && lastSeq == sequenceId)
+            bool sequenceChanged = !_lastShownSequence.TryGetValue(steamId, out var lastSeq) || lastSeq != sequenceId;
+            bool resendDue = !_lastSentTime.TryGetValue(steamId, out var lastTime) || (now - lastTime) >= ResendInterval;
+
+            if (!sequenceChanged && !resendDue)
                 continue;
 
             var player = players.FirstOrDefault(p => p.SteamID == steamId && p.IsValid && !p.IsBot);
@@ -37,6 +45,7 @@ public class HudManagerPlugin : BasePlugin
             {
                 player.PrintToCenterHtml(html, duration);
                 _lastShownSequence[steamId] = sequenceId;
+                _lastSentTime[steamId] = now;
             }
         }
 
@@ -45,6 +54,11 @@ public class HudManagerPlugin : BasePlugin
         {
             if (!activeIds.Contains(sid))
                 _lastShownSequence.Remove(sid);
+        }
+        foreach (var sid in _lastSentTime.Keys.ToList())
+        {
+            if (!activeIds.Contains(sid))
+                _lastSentTime.Remove(sid);
         }
     }
 }
