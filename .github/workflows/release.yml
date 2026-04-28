@@ -42,20 +42,15 @@ jobs:
       - name: Publish
         run: dotnet publish --configuration Release --no-restore --output ./publish
 
-      - name: Create shared artifact
-        run: |
-          mkdir -p ./shared-artifact
-          cp ./publish/shaedyHudManager.dll ./shared-artifact/
-
       - name: Zip plugin release
         run: |
           cd publish
-          zip -r ../shaedyHudManager-plugin.zip .
+          zip ../shaedyHudManager-plugin.zip shaedyHudManager.dll shaedyHudManager.pdb
 
       - name: Zip shared library
         run: |
-          cd shared-artifact
-          zip -r ../shaedyHudManager-shared.zip .
+          cd publish
+          zip ../shaedyHudManager-shared.zip shaedyHudManager.dll
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

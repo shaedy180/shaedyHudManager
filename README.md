@@ -4,7 +4,7 @@ A CounterStrikeSharp plugin that provides a centralized, priority-based overlay 
 
 ## How It Works
 
-Other shaedy plugins (AFK, Bounty, Clutch, Flash, Instadefuse, Kobe, MapChooser, Ranks) send HUD messages to this manager. The manager shows the highest-priority message for each player, replacing lower-priority ones automatically.
+Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser, Ranks) connect to this manager at runtime via reflection. The manager shows the highest-priority message for each player, replacing lower-priority ones automatically.
 
 ## Features
 
@@ -13,6 +13,7 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, Instadefuse, Kobe, MapChooser,
 - Automatic expiration of stale overlays
 - Single 300ms tick that dispatches to all players at once
 - Thread-safe with internal locking
+- Runtime connection via reflection - no compile-time dependency needed for other plugins
 
 ## Priority Levels
 
@@ -30,20 +31,13 @@ A higher priority overlay always replaces a lower priority one. Same-priority ov
 
 1. Download `shaedyHudManager-plugin.zip` from the latest release.
 2. Extract the zip into your CounterStrikeSharp `plugins` directory. You should have `csgo/addons/counterstrikesharp/plugins/shaedyHudManager/shaedyHudManager.dll`.
-3. Also download `shaedyHudManager-shared.zip` and extract `shaedyHudManager.dll` into your CounterStrikeSharp `shared` directory. You should have `csgo/addons/counterstrikesharp/shared/shaedyHudManager.dll`.
-4. Restart your server.
+3. Restart your server.
 
-The `shared/` copy is required so that other shaedy plugins can resolve and share the same HUD manager types at runtime.
+The `shared/` copy is no longer required. Other shaedy plugins connect to this manager at runtime via reflection.
 
 ## For Plugin Developers
 
-Add this project as a project reference with `PrivateAssets="all"` to prevent the DLL from being copied into your plugin output:
-
-```xml
-<ProjectReference Include="..\shaedyHudManager\shaedyHudManager.csproj" PrivateAssets="all" />
-```
-
-Then use `HudManager.Show()` instead of `player.PrintToCenterHtml()`:
+Include `HudManagerProxy.cs` in your plugin project. It uses reflection to connect to the already-loaded HudManager, so no compile-time dependency is needed:
 
 ```csharp
 using ShaedyHudManager;
@@ -52,8 +46,13 @@ using ShaedyHudManager;
 // player.PrintToCenterHtml(html, 3);
 
 // Use:
-HudManager.Show(player.SteamID, html, HudPriority.High, 3);
+HudManagerProxy.Show(player.SteamID, html, HudManagerProxy.Priority.High, 3);
+HudManagerProxy.Clear(player.SteamID);
 ```
+
+Priority constants: `HudManagerProxy.Priority.Critical` (100), `.High` (75), `.Medium` (50), `.Low` (25), `.Background` (10).
+
+If HudManager is not installed, calls silently no-op.
 
 ## Support
 
