@@ -14,13 +14,46 @@ public class HudManagerPlugin : BasePlugin
     private readonly Dictionary<ulong, float> _lastSentTime = new();
     private const float ResendInterval = 1.5f;
 
+    private CCSGameRules? _gameRules;
+    private bool _gameRulesInitialized;
+
     public override void Load(bool hotReload)
     {
         AddTimer(0.1f, Tick, TimerFlags.REPEAT);
+        RegisterListener<Listeners.OnMapStart>(OnMapStart);
+
+        if (hotReload)
+            InitializeGameRules();
+    }
+
+    private void OnMapStart(string mapName)
+    {
+        _gameRules = null;
+        _gameRulesInitialized = false;
+    }
+
+    private void InitializeGameRules()
+    {
+        if (_gameRulesInitialized) return;
+
+        var gameRulesProxy = Utilities.FindAllEntitiesByDesignerName<CCSGameRulesProxy>("cs_gamerules").FirstOrDefault();
+        _gameRules = gameRulesProxy?.GameRules;
+        _gameRulesInitialized = _gameRules != null;
     }
 
     private void Tick()
     {
+        if (!_gameRulesInitialized)
+        {
+            InitializeGameRules();
+            if (!_gameRulesInitialized) return;
+        }
+
+        if (_gameRules != null)
+        {
+            _gameRules.GameRestart = _gameRules.RestartRoundTime < Server.CurrentTime;
+        }
+
         var messages = HudManager.CollectActive();
         if (messages.Count == 0)
         {
