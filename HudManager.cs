@@ -17,18 +17,20 @@ public class HudEntry
     public HudPriority Priority { get; set; }
     public double ExpiresAt { get; set; }
     public int DisplayDuration { get; set; }
+    public long SequenceId { get; set; }
 }
 
 public static class HudManager
 {
     private static readonly Dictionary<ulong, HudEntry> _active = new();
     private static readonly object _lock = new();
+    private static long _sequenceCounter;
 
     public static void Show(ulong steamId, string html, HudPriority priority, int displaySeconds)
     {
         lock (_lock)
         {
-            if (_active.TryGetValue(steamId, out var existing) && existing.Priority >= priority)
+            if (_active.TryGetValue(steamId, out var existing) && existing.Priority > priority)
                 return;
 
             _active[steamId] = new HudEntry
@@ -36,7 +38,8 @@ public static class HudManager
                 Html = html,
                 Priority = priority,
                 ExpiresAt = DateTime.UtcNow.AddSeconds(displaySeconds).Ticks,
-                DisplayDuration = displaySeconds
+                DisplayDuration = displaySeconds,
+                SequenceId = System.Threading.Interlocked.Increment(ref _sequenceCounter)
             };
         }
     }
@@ -57,9 +60,9 @@ public static class HudManager
         }
     }
 
-    internal static List<(ulong steamId, string html, int duration)> CollectActive()
+    internal static List<(ulong steamId, string html, int duration, long sequenceId)> CollectActive()
     {
-        var result = new List<(ulong, string, int)>();
+        var result = new List<(ulong, string, int, long)>();
         lock (_lock)
         {
             var now = DateTime.UtcNow.Ticks;
@@ -67,7 +70,7 @@ public static class HudManager
             foreach (var k in expired) _active.Remove(k);
 
             foreach (var kv in _active)
-                result.Add((kv.Key, kv.Value.Html, kv.Value.DisplayDuration));
+                result.Add((kv.Key, kv.Value.Html, kv.Value.DisplayDuration, kv.Value.SequenceId));
         }
         return result;
     }
