@@ -2,6 +2,10 @@
 
 A CounterStrikeSharp plugin that provides a centralized, priority-based overlay queue for CS2 plugins. Prevents multiple plugins from fighting over the center-screen HUD.
 
+## How It Works
+
+Other shaedy plugins (AFK, Bounty, Clutch, Flash, Instadefuse, Kobe, MapChooser, Ranks) send HUD messages to this manager. The manager shows the highest-priority message for each player, replacing lower-priority ones automatically.
+
 ## Features
 
 - Priority-based overlay system with 5 levels: Critical, High, Medium, Low, Background
@@ -9,30 +13,37 @@ A CounterStrikeSharp plugin that provides a centralized, priority-based overlay 
 - Automatic expiration of stale overlays
 - Single 300ms tick that dispatches to all players at once
 - Thread-safe with internal locking
-- Used by shaedyAFK, shaedyBounty, shaedyClutch, shaedyFlash, shaedyInstadefuse, shaedyKobe, shaedyMapChooser, and shaedyRanks
 
 ## Priority Levels
 
 | Priority | Value | Used by |
 |----------|-------|---------|
-| Critical | 100 | shaedyClutch, shaedyInstadefuse |
-| High | 75 | shaedyBounty (bounty warnings, claim flash) |
-| Medium | 50 | shaedyAFK, shaedyRanks (MMR float, kill streak, rank panel) |
-| Low | 25 | shaedyFlash, shaedyKobe |
-| Background | 10 | shaedyMapChooser (next map badge, vote progress) |
+| Critical | 100 | Clutch, InstaDefuse |
+| High | 75 | Bounty (warnings, claim flash) |
+| Medium | 50 | AFK, Ranks (MMR float, kill streak, rank panel) |
+| Low | 25 | Flash, Kobe |
+| Background | 10 | MapChooser (next map badge, vote progress) |
 
 A higher priority overlay always replaces a lower priority one. Same-priority overlays are replaced by newer ones.
 
 ## Installation
 
-1. Drop the shaedyHudManager plugin folder into your CounterStrikeSharp `plugins` directory.
-2. Restart your server.
+1. Download `shaedyHudManager-plugin.zip` from the latest release.
+2. Extract the zip into your CounterStrikeSharp `plugins` directory. You should have `csgo/addons/counterstrikesharp/plugins/shaedyHudManager/shaedyHudManager.dll`.
+3. Also download `shaedyHudManager-shared.zip` and extract `shaedyHudManager.dll` into your CounterStrikeSharp `shared` directory. You should have `csgo/addons/counterstrikesharp/shared/shaedyHudManager.dll`.
+4. Restart your server.
 
-No configuration is needed. Other plugins that depend on this will automatically register with the HUD manager.
+The `shared/` copy is required so that other shaedy plugins can resolve and share the same HUD manager types at runtime.
 
 ## For Plugin Developers
 
-Add this project as a project reference to your plugin. Then use `HudManager.Show(steamId, html, priority, seconds)` instead of `player.PrintToCenterHtml(html, seconds)`.
+Add this project as a project reference with `PrivateAssets="all"` to prevent the DLL from being copied into your plugin output:
+
+```xml
+<ProjectReference Include="..\shaedyHudManager\shaedyHudManager.csproj" PrivateAssets="all" />
+```
+
+Then use `HudManager.Show()` instead of `player.PrintToCenterHtml()`:
 
 ```csharp
 using ShaedyHudManager;
