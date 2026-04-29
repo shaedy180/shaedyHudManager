@@ -11,8 +11,9 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser,
 - Priority-based overlay system with 5 levels: Critical, High, Medium, Low, Background
 - Per-player overlay queue with automatic restore of lower-priority overlays
 - Same-priority overlays replace older entries, so countdown/status updates refresh cleanly
-- Automatic expiration of stale overlays with active HUD clearing when nothing remains
-- Sequence-based dispatch with a small client-side duration buffer to avoid white flashing from repeated redraws
+- Continuous `GameRestart` workaround on every server tick to suppress the known CS2 CenterHTML flashing bug
+- Server-side duration clamp so every overlay stays visible for at least 3 seconds
+- Automatic expiration of stale overlays without sending blank CenterHTML clear messages
 - Thread-safe with internal locking
 - Runtime connection via reflection - no compile-time dependency needed for other plugins
 
@@ -55,6 +56,8 @@ HudManagerProxy.Clear(player.SteamID);
 Priority constants: `HudManagerProxy.Priority.Critical` (100), `.High` (75), `.Medium` (50), `.Low` (25), `.Background` (10).
 
 If HudManager is not installed, calls silently no-op.
+
+Only `shaedyHudManager` should call `player.PrintToCenterHtml(...)` directly. All other plugins should go through `HudManagerProxy.Show(...)`, otherwise they bypass the shared priority queue and can overwrite active overlays.
 
 ## Support
 

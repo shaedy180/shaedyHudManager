@@ -22,6 +22,9 @@ public class HudEntry
 
 public static class HudManager
 {
+    private const int MinimumDisplaySeconds = 3;
+    private const int MaximumDisplaySeconds = 10;
+
     private static readonly Dictionary<ulong, List<HudEntry>> _active = new();
     private static readonly object _lock = new();
     private static long _sequenceCounter;
@@ -31,6 +34,7 @@ public static class HudManager
         lock (_lock)
         {
             var now = DateTime.UtcNow.Ticks;
+            int seconds = Math.Clamp(displaySeconds, MinimumDisplaySeconds, MaximumDisplaySeconds);
 
             if (!_active.TryGetValue(steamId, out var entries))
             {
@@ -48,8 +52,8 @@ public static class HudManager
             {
                 Html = html,
                 Priority = priority,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(displaySeconds).Ticks,
-                DisplayDuration = displaySeconds,
+                ExpiresAt = DateTime.UtcNow.AddSeconds(seconds).Ticks,
+                DisplayDuration = seconds,
                 SequenceId = System.Threading.Interlocked.Increment(ref _sequenceCounter)
             });
         }
