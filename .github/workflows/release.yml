@@ -44,18 +44,14 @@ jobs:
 
       - name: Zip plugin release
         run: |
-          cd publish
-          zip ../shaedyHudManager-plugin.zip shaedyHudManager.dll shaedyHudManager.pdb
-
-      - name: Zip shared library
-        run: |
-          cd publish
-          zip ../shaedyHudManager-shared.zip shaedyHudManager.dll
+          mkdir -p package/shaedyHudManager
+          cp publish/shaedyHudManager.dll package/shaedyHudManager/
+          if [ -f publish/shaedyHudManager.pdb ]; then cp publish/shaedyHudManager.pdb package/shaedyHudManager/; fi
+          cd package
+          zip -r ../shaedyHudManager-plugin.zip shaedyHudManager
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            shaedyHudManager-plugin.zip
-            shaedyHudManager-shared.zip
+          files: shaedyHudManager-plugin.zip
           generate_release_notes: false

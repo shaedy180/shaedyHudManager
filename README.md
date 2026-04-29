@@ -4,14 +4,15 @@ A CounterStrikeSharp plugin that provides a centralized, priority-based overlay 
 
 ## How It Works
 
-Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser, Ranks) connect to this manager at runtime via reflection. The manager shows the highest-priority message for each player, replacing lower-priority ones automatically.
+Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser, Ranks) connect to this manager at runtime via reflection. The manager keeps lower-priority overlays queued per player, shows the highest-priority entry, and restores the next-best overlay automatically when a stronger one expires.
 
 ## Features
 
 - Priority-based overlay system with 5 levels: Critical, High, Medium, Low, Background
-- Per-player overlay queue so each player sees the most relevant message
-- Automatic expiration of stale overlays
-- Single 300ms tick that dispatches to all players at once
+- Per-player overlay queue with automatic restore of lower-priority overlays
+- Same-priority overlays replace older entries, so countdown/status updates refresh cleanly
+- Automatic expiration of stale overlays with active HUD clearing when nothing remains
+- 250ms dispatch loop that keeps center HTML overlays alive consistently
 - Thread-safe with internal locking
 - Runtime connection via reflection - no compile-time dependency needed for other plugins
 
@@ -25,15 +26,16 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser,
 | Low | 25 | Flash, Kobe |
 | Background | 10 | MapChooser (next map badge, vote progress) |
 
-A higher priority overlay always replaces a lower priority one. Same-priority overlays are replaced by newer ones.
+A higher priority overlay is shown first, but lower-priority overlays remain queued and come back automatically once the stronger message expires. Same-priority overlays are replaced by newer ones.
 
 ## Installation
 
 1. Download `shaedyHudManager-plugin.zip` from the latest release.
-2. Extract the zip into your CounterStrikeSharp `plugins` directory. You should have `csgo/addons/counterstrikesharp/plugins/shaedyHudManager/shaedyHudManager.dll`.
-3. Restart your server.
+2. Extract the zip into your CounterStrikeSharp `plugins` directory: `csgo/addons/counterstrikesharp/plugins/`
+3. After extracting, the plugin should be located at `csgo/addons/counterstrikesharp/plugins/shaedyHudManager/shaedyHudManager.dll`.
+4. Restart your server.
 
-The `shared/` copy is no longer required. Other shaedy plugins connect to this manager at runtime via reflection.
+No shared copy is required. Other shaedy plugins connect to this manager at runtime via reflection.
 
 ## For Plugin Developers
 

@@ -7,19 +7,20 @@ namespace ShaedyHudManager;
 public class HudManagerPlugin : BasePlugin
 {
     public override string ModuleName => "shaedy HUD Manager";
-    public override string ModuleVersion => "1.2.0";
+    public override string ModuleVersion => "1.3.0";
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
     private readonly Dictionary<ulong, float> _lastSentTime = new();
-    private const float ResendInterval = 1.5f;
+    private const float DispatchInterval = 0.25f;
+    private const float ResendInterval = 0.25f;
 
     private CCSGameRules? _gameRules;
     private bool _gameRulesInitialized;
 
     public override void Load(bool hotReload)
     {
-        AddTimer(0.1f, Tick, TimerFlags.REPEAT);
+        AddTimer(DispatchInterval, Tick, TimerFlags.REPEAT);
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
 
         if (hotReload)
@@ -55,15 +56,20 @@ public class HudManagerPlugin : BasePlugin
         }
 
         var messages = HudManager.CollectActive();
+        var players = Utilities.GetPlayers();
+
         if (messages.Count == 0)
         {
+            ClearPreviouslyShown(players, new HashSet<ulong>());
             _lastShownSequence.Clear();
             _lastSentTime.Clear();
             return;
         }
 
         float now = Server.CurrentTime;
-        var players = Utilities.GetPlayers();
+        var playersBySteamId = players
+            .Where(player => player.IsValid && !player.IsBot)
+            .ToDictionary(player => player.SteamID, player => player);
 
         foreach (var (steamId, html, duration, sequenceId) in messages)
         {
@@ -73,8 +79,7 @@ public class HudManagerPlugin : BasePlugin
             if (!sequenceChanged && !resendDue)
                 continue;
 
-            var player = players.FirstOrDefault(p => p.SteamID == steamId && p.IsValid && !p.IsBot);
-            if (player != null)
+            if (playersBySteamId.TryGetValue(steamId, out var player))
             {
                 player.PrintToCenterHtml(html, duration);
                 _lastShownSequence[steamId] = sequenceId;
@@ -83,6 +88,8 @@ public class HudManagerPlugin : BasePlugin
         }
 
         var activeIds = new HashSet<ulong>(messages.Select(m => m.steamId));
+        ClearPreviouslyShown(players, activeIds);
+
         foreach (var sid in _lastShownSequence.Keys.ToList())
         {
             if (!activeIds.Contains(sid))
@@ -92,6 +99,22 @@ public class HudManagerPlugin : BasePlugin
         {
             if (!activeIds.Contains(sid))
                 _lastSentTime.Remove(sid);
+        }
+    }
+
+    private void ClearPreviouslyShown(List<CCSPlayerController> players, HashSet<ulong> activeIds)
+    {
+        var playersBySteamId = players
+            .Where(player => player.IsValid && !player.IsBot)
+            .ToDictionary(player => player.SteamID, player => player);
+
+        foreach (var sid in _lastShownSequence.Keys.ToList())
+        {
+            if (activeIds.Contains(sid))
+                continue;
+
+            if (playersBySteamId.TryGetValue(sid, out var player))
+                player.PrintToCenterHtml(" ", 1);
         }
     }
 }
