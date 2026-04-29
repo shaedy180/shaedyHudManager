@@ -11,6 +11,7 @@ public class HudManagerPlugin : BasePlugin
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
+    private readonly Dictionary<ulong, float> _visibleUntilTime = new();
     private const float DispatchInterval = 0.25f;
     private const int ClientDurationBufferSeconds = 1;
     private const int MinimumClientDurationSeconds = 2;
@@ -60,11 +61,11 @@ public class HudManagerPlugin : BasePlugin
 
         if (messages.Count == 0)
         {
-            ClearPreviouslyShown(players, new HashSet<ulong>());
-            _lastShownSequence.Clear();
+            ClearExpiredDisplays(players, new HashSet<ulong>());
             return;
         }
 
+        float now = Server.CurrentTime;
         var playersBySteamId = players
             .Where(player => player.IsValid && !player.IsBot)
             .ToDictionary(player => player.SteamID, player => player);
@@ -80,21 +81,23 @@ public class HudManagerPlugin : BasePlugin
                 int clientDuration = Math.Max(MinimumClientDurationSeconds, duration + ClientDurationBufferSeconds);
                 player.PrintToCenterHtml(html, clientDuration);
                 _lastShownSequence[steamId] = sequenceId;
+                _visibleUntilTime[steamId] = now + clientDuration;
             }
         }
 
         var activeIds = new HashSet<ulong>(messages.Select(m => m.steamId));
-        ClearPreviouslyShown(players, activeIds);
+        ClearExpiredDisplays(players, activeIds);
 
         foreach (var sid in _lastShownSequence.Keys.ToList())
         {
-            if (!activeIds.Contains(sid))
+            if (!activeIds.Contains(sid) && !_visibleUntilTime.ContainsKey(sid))
                 _lastShownSequence.Remove(sid);
         }
     }
 
-    private void ClearPreviouslyShown(List<CCSPlayerController> players, HashSet<ulong> activeIds)
+    private void ClearExpiredDisplays(List<CCSPlayerController> players, HashSet<ulong> activeIds)
     {
+        float now = Server.CurrentTime;
         var playersBySteamId = players
             .Where(player => player.IsValid && !player.IsBot)
             .ToDictionary(player => player.SteamID, player => player);
@@ -104,8 +107,20 @@ public class HudManagerPlugin : BasePlugin
             if (activeIds.Contains(sid))
                 continue;
 
+            if (_visibleUntilTime.TryGetValue(sid, out var visibleUntil) && now < visibleUntil)
+                continue;
+
             if (playersBySteamId.TryGetValue(sid, out var player))
                 player.PrintToCenterHtml(" ", 1);
+
+            _lastShownSequence.Remove(sid);
+            _visibleUntilTime.Remove(sid);
+        }
+
+        foreach (var sid in _visibleUntilTime.Keys.ToList())
+        {
+            if (!_lastShownSequence.ContainsKey(sid))
+                _visibleUntilTime.Remove(sid);
         }
     }
 }
