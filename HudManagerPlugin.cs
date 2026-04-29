@@ -7,13 +7,13 @@ namespace ShaedyHudManager;
 public class HudManagerPlugin : BasePlugin
 {
     public override string ModuleName => "shaedy HUD Manager";
-    public override string ModuleVersion => "1.3.0";
+    public override string ModuleVersion => "1.3.2";
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
-    private readonly Dictionary<ulong, float> _lastSentTime = new();
     private const float DispatchInterval = 0.25f;
-    private const float ResendInterval = 0.25f;
+    private const int ClientDurationBufferSeconds = 1;
+    private const int MinimumClientDurationSeconds = 2;
 
     private CCSGameRules? _gameRules;
     private bool _gameRulesInitialized;
@@ -62,11 +62,9 @@ public class HudManagerPlugin : BasePlugin
         {
             ClearPreviouslyShown(players, new HashSet<ulong>());
             _lastShownSequence.Clear();
-            _lastSentTime.Clear();
             return;
         }
 
-        float now = Server.CurrentTime;
         var playersBySteamId = players
             .Where(player => player.IsValid && !player.IsBot)
             .ToDictionary(player => player.SteamID, player => player);
@@ -74,16 +72,14 @@ public class HudManagerPlugin : BasePlugin
         foreach (var (steamId, html, duration, sequenceId) in messages)
         {
             bool sequenceChanged = !_lastShownSequence.TryGetValue(steamId, out var lastSeq) || lastSeq != sequenceId;
-            bool resendDue = !_lastSentTime.TryGetValue(steamId, out var lastTime) || (now - lastTime) >= ResendInterval;
-
-            if (!sequenceChanged && !resendDue)
+            if (!sequenceChanged)
                 continue;
 
             if (playersBySteamId.TryGetValue(steamId, out var player))
             {
-                player.PrintToCenterHtml(html, duration);
+                int clientDuration = Math.Max(MinimumClientDurationSeconds, duration + ClientDurationBufferSeconds);
+                player.PrintToCenterHtml(html, clientDuration);
                 _lastShownSequence[steamId] = sequenceId;
-                _lastSentTime[steamId] = now;
             }
         }
 
@@ -94,11 +90,6 @@ public class HudManagerPlugin : BasePlugin
         {
             if (!activeIds.Contains(sid))
                 _lastShownSequence.Remove(sid);
-        }
-        foreach (var sid in _lastSentTime.Keys.ToList())
-        {
-            if (!activeIds.Contains(sid))
-                _lastSentTime.Remove(sid);
         }
     }
 
