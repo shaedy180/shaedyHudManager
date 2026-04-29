@@ -7,13 +7,15 @@ namespace ShaedyHudManager;
 public class HudManagerPlugin : BasePlugin
 {
     public override string ModuleName => "shaedy HUD Manager";
-    public override string ModuleVersion => "1.3.0";
+    public override string ModuleVersion => "1.3.1";
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
-    private readonly Dictionary<ulong, float> _lastSentTime = new();
     private const float DispatchInterval = 0.25f;
-    private const float ResendInterval = 0.25f;
+    private const int ClientDurationBufferSeconds = 1;
+    private const int MinimumClientDurationSeconds = 2;
+    private const string BrandMarker = "<!-- shaedy-brand -->";
+    private const string BrandBadgeHtml = "<div style='text-align:center;font-family:Arial;font-size:10px;color:#888;letter-spacing:3px;margin-bottom:3px;'>shaedy</div>";
 
     private CCSGameRules? _gameRules;
     private bool _gameRulesInitialized;
@@ -62,11 +64,9 @@ public class HudManagerPlugin : BasePlugin
         {
             ClearPreviouslyShown(players, new HashSet<ulong>());
             _lastShownSequence.Clear();
-            _lastSentTime.Clear();
             return;
         }
 
-        float now = Server.CurrentTime;
         var playersBySteamId = players
             .Where(player => player.IsValid && !player.IsBot)
             .ToDictionary(player => player.SteamID, player => player);
@@ -74,16 +74,14 @@ public class HudManagerPlugin : BasePlugin
         foreach (var (steamId, html, duration, sequenceId) in messages)
         {
             bool sequenceChanged = !_lastShownSequence.TryGetValue(steamId, out var lastSeq) || lastSeq != sequenceId;
-            bool resendDue = !_lastSentTime.TryGetValue(steamId, out var lastTime) || (now - lastTime) >= ResendInterval;
-
-            if (!sequenceChanged && !resendDue)
+            if (!sequenceChanged)
                 continue;
 
             if (playersBySteamId.TryGetValue(steamId, out var player))
             {
-                player.PrintToCenterHtml(html, duration);
+                int clientDuration = Math.Max(MinimumClientDurationSeconds, duration + ClientDurationBufferSeconds);
+                player.PrintToCenterHtml(ApplyBranding(html), clientDuration);
                 _lastShownSequence[steamId] = sequenceId;
-                _lastSentTime[steamId] = now;
             }
         }
 
@@ -94,11 +92,6 @@ public class HudManagerPlugin : BasePlugin
         {
             if (!activeIds.Contains(sid))
                 _lastShownSequence.Remove(sid);
-        }
-        foreach (var sid in _lastSentTime.Keys.ToList())
-        {
-            if (!activeIds.Contains(sid))
-                _lastSentTime.Remove(sid);
         }
     }
 
@@ -116,5 +109,23 @@ public class HudManagerPlugin : BasePlugin
             if (playersBySteamId.TryGetValue(sid, out var player))
                 player.PrintToCenterHtml(" ", 1);
         }
+    }
+
+    private static string ApplyBranding(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html) || html.Contains(BrandMarker, StringComparison.Ordinal))
+            return html;
+
+        var bodyStart = html.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
+        if (bodyStart >= 0)
+        {
+            var bodyEnd = html.IndexOf('>', bodyStart);
+            if (bodyEnd >= 0)
+            {
+                return html.Insert(bodyEnd + 1, BrandMarker + BrandBadgeHtml);
+            }
+        }
+
+        return "<html><body style='margin:0;padding:0;'>" + BrandMarker + BrandBadgeHtml + html + "</body></html>";
     }
 }

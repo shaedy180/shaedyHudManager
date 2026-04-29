@@ -12,7 +12,8 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser,
 - Per-player overlay queue with automatic restore of lower-priority overlays
 - Same-priority overlays replace older entries, so countdown/status updates refresh cleanly
 - Automatic expiration of stale overlays with active HUD clearing when nothing remains
-- 250ms dispatch loop that keeps center HTML overlays alive consistently
+- Buffered client-side display duration to avoid white flash / over-refresh on static panels
+- Global `shaedy` branding line injected into all manager-dispatched center HTML messages
 - Thread-safe with internal locking
 - Runtime connection via reflection - no compile-time dependency needed for other plugins
 
