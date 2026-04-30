@@ -11,7 +11,9 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser,
 - Priority-based overlay system with 5 levels: Critical, High, Medium, Low, Background
 - Per-player overlay queue with automatic restore of lower-priority overlays
 - Same-priority overlays replace older entries, so countdown/status updates refresh cleanly
-- Continuous `GameRestart` workaround on every server tick to suppress the known CS2 CenterHTML flashing bug
+- Recovery repaint for `High`/`Critical` HUDs so native CS2 center messages do not permanently overwrite them without constant flashing
+- Optional `GameRestart` HTML workaround, disabled by default and no longer applied globally on every tick
+- Native center busy-window tracking so normal HUDs can wait out known CS2 center-message collisions
 - Server-side duration clamp so every overlay stays visible for at least 3 seconds
 - Automatic expiration of stale overlays without sending blank CenterHTML clear messages
 - Thread-safe with internal locking
@@ -28,6 +30,17 @@ Other shaedy plugins (AFK, Bounty, Clutch, Flash, InstaDefuse, Kobe, MapChooser,
 | Background | 10 | MapChooser (next map badge, vote progress) |
 
 A higher priority overlay is shown first, but lower-priority overlays remain queued and come back automatically once the stronger message expires. Same-priority overlays are replaced by newer ones.
+
+`High` and `Critical` overlays no longer repaint continuously. Instead, the manager arms a delayed recovery repaint when CS2 is known to be busy on the center channel, which avoids the aggressive 300-500ms flashing caused by constant re-sends.
+
+## Configuration
+
+`shaedyHudManagerConfig.json` is created automatically. Relevant options:
+
+- `EnableGameRestartHtmlWorkaround` (`false`): opt-in workaround for servers that still need the old CenterHTML flicker hack
+- `GameRestartWorkaroundOnlyWhileHudActive` (`true`): keeps the workaround scoped to actual HUD paints
+- `ProtectedRepaintIntervalSeconds` (`0.35`): minimum delay before a protected recovery repaint after a busy center-message window
+- `EnableDebugLogging` (`false`): emits low-volume debug logs for repaint/workaround decisions
 
 ## Installation
 

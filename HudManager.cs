@@ -24,8 +24,10 @@ public static class HudManager
 {
     private const int MinimumDisplaySeconds = 3;
     private const int MaximumDisplaySeconds = 10;
+    private const float MaximumBusySeconds = 10.0f;
 
     private static readonly Dictionary<ulong, List<HudEntry>> _active = new();
+    private static readonly Dictionary<ulong, long> _nativeBusyUntil = new();
     private static readonly object _lock = new();
     private static long _sequenceCounter;
 
@@ -64,6 +66,7 @@ public static class HudManager
         lock (_lock)
         {
             _active.Remove(steamId);
+            _nativeBusyUntil.Remove(steamId);
         }
     }
 
@@ -72,15 +75,37 @@ public static class HudManager
         lock (_lock)
         {
             _active.Clear();
+            _nativeBusyUntil.Clear();
         }
     }
 
-    internal static List<(ulong steamId, string html, int duration, long sequenceId)> CollectActive()
+    public static void NotifyNativeCenterBusy(ulong steamId, float seconds)
     {
-        var result = new List<(ulong, string, int, long)>();
+        if (steamId == 0)
+            return;
+
+        var clampedSeconds = Math.Clamp(seconds, 0.0f, MaximumBusySeconds);
+        if (clampedSeconds <= 0.0f)
+            return;
+
+        lock (_lock)
+        {
+            var busyUntil = DateTime.UtcNow.AddSeconds(clampedSeconds).Ticks;
+
+            if (_nativeBusyUntil.TryGetValue(steamId, out var existing) && existing > busyUntil)
+                return;
+
+            _nativeBusyUntil[steamId] = busyUntil;
+        }
+    }
+
+    internal static List<ActiveHudState> CollectActive()
+    {
+        var result = new List<ActiveHudState>();
         lock (_lock)
         {
             var now = DateTime.UtcNow.Ticks;
+            RemoveExpiredBusyWindows(now);
 
             foreach (var (steamId, entries) in _active.ToList())
             {
@@ -97,7 +122,19 @@ public static class HudManager
                     .First();
 
                 var remainingSeconds = Math.Max(1, (int)Math.Ceiling(TimeSpan.FromTicks(top.ExpiresAt - now).TotalSeconds));
-                result.Add((steamId, top.Html, remainingSeconds, top.SequenceId));
+                var nativeCenterBusy = _nativeBusyUntil.TryGetValue(steamId, out var busyUntil) && busyUntil > now;
+                var nativeCenterBusySecondsRemaining = nativeCenterBusy
+                    ? (float)TimeSpan.FromTicks(busyUntil - now).TotalSeconds
+                    : 0.0f;
+
+                result.Add(new ActiveHudState(
+                    steamId,
+                    top.Html,
+                    remainingSeconds,
+                    top.SequenceId,
+                    top.Priority,
+                    nativeCenterBusy,
+                    nativeCenterBusySecondsRemaining));
             }
         }
         return result;
@@ -106,5 +143,16 @@ public static class HudManager
     private static void RemoveExpired(List<HudEntry> entries, long now)
     {
         entries.RemoveAll(entry => entry.ExpiresAt <= now);
+    }
+
+    private static void RemoveExpiredBusyWindows(long now)
+    {
+        foreach (var steamId in _nativeBusyUntil
+                     .Where(entry => entry.Value <= now)
+                     .Select(entry => entry.Key)
+                     .ToList())
+        {
+            _nativeBusyUntil.Remove(steamId);
+        }
     }
 }
