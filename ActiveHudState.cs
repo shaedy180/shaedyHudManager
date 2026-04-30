@@ -5,6 +5,4 @@ internal sealed record ActiveHudState(
     string Html,
     int Duration,
     long SequenceId,
-    HudPriority Priority,
-    bool NativeCenterBusy,
-    float NativeCenterBusySecondsRemaining);
+    bool NativeCenterBusy);

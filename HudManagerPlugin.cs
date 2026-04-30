@@ -9,18 +9,11 @@ namespace ShaedyHudManager;
 [MinimumApiVersion(247)]
 public class HudManagerPlugin : BasePlugin
 {
-    private sealed class RecoveryRepaintState
-    {
-        public long SequenceId { get; init; }
-        public float DueAt { get; set; }
-    }
-
     public override string ModuleName => "shaedy HUD Manager";
-    public override string ModuleVersion => "1.4.0";
+    public override string ModuleVersion => "1.4.1";
     public override string ModuleAuthor => "shaedy";
 
     private readonly Dictionary<ulong, long> _lastShownSequence = new();
-    private readonly Dictionary<ulong, RecoveryRepaintState> _pendingRecoveryRepaints = new();
     private readonly Dictionary<ulong, float> _visibleUntilTime = new();
     private const float DispatchInterval = 0.10f;
     private const int MinimumDisplaySeconds = 3;
@@ -48,7 +41,6 @@ public class HudManagerPlugin : BasePlugin
         _gameRules = null;
         _gameRulesInitialized = false;
         _lastShownSequence.Clear();
-        _pendingRecoveryRepaints.Clear();
         _visibleUntilTime.Clear();
     }
 
@@ -66,7 +58,6 @@ public class HudManagerPlugin : BasePlugin
         if (!File.Exists(_configFilePath))
         {
             Config = new HudManagerConfig();
-            Config.Normalize();
             SaveConfig();
             LogDebug("Created default HUD manager config.");
             return;
@@ -82,7 +73,6 @@ public class HudManagerPlugin : BasePlugin
             Config = new HudManagerConfig();
         }
 
-        Config.Normalize();
         SaveConfig();
 
         if (Config.EnableDebugLogging)
@@ -91,9 +81,7 @@ public class HudManagerPlugin : BasePlugin
                 "[shaedyHudManager] Debug enabled. GameRestart workaround="
                 + Config.EnableGameRestartHtmlWorkaround
                 + ", onlyWhileHudActive="
-                + Config.GameRestartWorkaroundOnlyWhileHudActive
-                + ", protectedRecoveryDelay="
-                + Config.ProtectedRepaintIntervalSeconds.ToString("0.00"));
+                + Config.GameRestartWorkaroundOnlyWhileHudActive);
         }
     }
 
@@ -144,45 +132,20 @@ public class HudManagerPlugin : BasePlugin
 
         float now = Server.CurrentTime;
         var playersBySteamId = players
-            .Where(player => player.IsValid && !player.IsBot && player.Connected == PlayerConnectedState.Connected)
+            .Where(player => player.IsValid && !player.IsBot && IsConnected(player))
             .ToDictionary(player => player.SteamID, player => player);
 
         foreach (var message in messages)
         {
             bool sequenceChanged = !_lastShownSequence.TryGetValue(message.SteamId, out var lastSeq) || lastSeq != message.SequenceId;
-            bool isProtected = message.Priority >= HudPriority.High;
-            bool hasPendingRecoveryRepaint = _pendingRecoveryRepaints.TryGetValue(message.SteamId, out var pendingRecoveryRepaint)
-                                             && pendingRecoveryRepaint.SequenceId == message.SequenceId;
 
-            if (isProtected && message.NativeCenterBusySecondsRemaining > 0.0f)
+            if (message.NativeCenterBusy && sequenceChanged)
             {
-                float dueAt = now + Math.Max(
-                    Config.ProtectedRepaintIntervalSeconds,
-                    message.NativeCenterBusySecondsRemaining + 0.05f);
-
-                if (!hasPendingRecoveryRepaint || pendingRecoveryRepaint!.DueAt < dueAt)
-                {
-                    _pendingRecoveryRepaints[message.SteamId] = new RecoveryRepaintState
-                    {
-                        SequenceId = message.SequenceId,
-                        DueAt = dueAt
-                    };
-
-                    hasPendingRecoveryRepaint = true;
-                    pendingRecoveryRepaint = _pendingRecoveryRepaints[message.SteamId];
-                    LogDebug("Armed recovery repaint for SteamID " + message.SteamId + " at priority " + message.Priority + ".");
-                }
-            }
-
-            bool recoveryRepaintDue = hasPendingRecoveryRepaint && now >= pendingRecoveryRepaint!.DueAt;
-
-            if (message.NativeCenterBusy && !isProtected && sequenceChanged)
-            {
-                LogDebug("Delayed normal HUD because native center channel is busy for SteamID " + message.SteamId + ".");
+                LogDebug("Delayed HUD because native center channel is busy for SteamID " + message.SteamId + ".");
                 continue;
             }
 
-            if (!sequenceChanged && !recoveryRepaintDue)
+            if (!sequenceChanged)
                 continue;
 
             if (playersBySteamId.TryGetValue(message.SteamId, out var player))
@@ -194,18 +157,9 @@ public class HudManagerPlugin : BasePlugin
                 // manager should write to it directly so priority handling stays consistent.
                 int clientDuration = Math.Clamp(message.Duration, MinimumDisplaySeconds, MaximumDisplaySeconds);
                 player.PrintToCenterHtml(message.Html, clientDuration);
+                HudManager.MarkPainted(message.SteamId, message.SequenceId);
                 _lastShownSequence[message.SteamId] = message.SequenceId;
                 _visibleUntilTime[message.SteamId] = now + clientDuration;
-
-                if (recoveryRepaintDue)
-                {
-                    _pendingRecoveryRepaints.Remove(message.SteamId);
-                    LogDebug("Executed recovery repaint for SteamID " + message.SteamId + " at priority " + message.Priority + ".");
-                }
-                else if (sequenceChanged)
-                {
-                    ClearStaleRecoveryRepaint(message.SteamId, message.SequenceId);
-                }
             }
         }
 
@@ -232,16 +186,6 @@ public class HudManagerPlugin : BasePlugin
 
             _visibleUntilTime.Remove(sid);
             _lastShownSequence.Remove(sid);
-            _pendingRecoveryRepaints.Remove(sid);
-        }
-    }
-
-    private void ClearStaleRecoveryRepaint(ulong steamId, long sequenceId)
-    {
-        if (_pendingRecoveryRepaints.TryGetValue(steamId, out var pendingRecoveryRepaint)
-            && pendingRecoveryRepaint.SequenceId != sequenceId)
-        {
-            _pendingRecoveryRepaints.Remove(steamId);
         }
     }
 
@@ -251,5 +195,11 @@ public class HudManagerPlugin : BasePlugin
             return;
 
         Console.WriteLine("[shaedyHudManager] " + message);
+    }
+
+    private static bool IsConnected(CCSPlayerController player)
+    {
+        var stateName = player.Connected.ToString();
+        return stateName == "Connected" || stateName == "PlayerConnected";
     }
 }

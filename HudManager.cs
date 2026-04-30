@@ -15,8 +15,10 @@ public class HudEntry
 {
     public required string Html { get; set; }
     public HudPriority Priority { get; set; }
-    public long ExpiresAt { get; set; }
-    public int DisplayDuration { get; set; }
+    public long CreatedAt { get; set; }
+    public float DurationSeconds { get; set; }
+    public long? FirstPaintedAt { get; set; }
+    public long? ExpiresAt { get; set; }
     public long SequenceId { get; set; }
 }
 
@@ -54,10 +56,29 @@ public static class HudManager
             {
                 Html = html,
                 Priority = priority,
-                ExpiresAt = DateTime.UtcNow.AddSeconds(seconds).Ticks,
-                DisplayDuration = seconds,
+                CreatedAt = now,
+                DurationSeconds = seconds,
+                FirstPaintedAt = null,
+                ExpiresAt = null,
                 SequenceId = System.Threading.Interlocked.Increment(ref _sequenceCounter)
             });
+        }
+    }
+
+    public static void MarkPainted(ulong steamId, long sequenceId)
+    {
+        lock (_lock)
+        {
+            if (!_active.TryGetValue(steamId, out var entries))
+                return;
+
+            var entry = entries.FirstOrDefault(item => item.SequenceId == sequenceId);
+            if (entry == null || entry.FirstPaintedAt.HasValue)
+                return;
+
+            var now = DateTime.UtcNow.Ticks;
+            entry.FirstPaintedAt = now;
+            entry.ExpiresAt = DateTime.UtcNow.AddSeconds(entry.DurationSeconds).Ticks;
         }
     }
 
@@ -121,20 +142,17 @@ public static class HudManager
                     .ThenByDescending(entry => entry.SequenceId)
                     .First();
 
-                var remainingSeconds = Math.Max(1, (int)Math.Ceiling(TimeSpan.FromTicks(top.ExpiresAt - now).TotalSeconds));
+                var remainingSeconds = top.ExpiresAt.HasValue
+                    ? Math.Max(1, (int)Math.Ceiling(TimeSpan.FromTicks(top.ExpiresAt.Value - now).TotalSeconds))
+                    : Math.Max(1, (int)Math.Ceiling(top.DurationSeconds));
                 var nativeCenterBusy = _nativeBusyUntil.TryGetValue(steamId, out var busyUntil) && busyUntil > now;
-                var nativeCenterBusySecondsRemaining = nativeCenterBusy
-                    ? (float)TimeSpan.FromTicks(busyUntil - now).TotalSeconds
-                    : 0.0f;
 
                 result.Add(new ActiveHudState(
                     steamId,
                     top.Html,
                     remainingSeconds,
                     top.SequenceId,
-                    top.Priority,
-                    nativeCenterBusy,
-                    nativeCenterBusySecondsRemaining));
+                    nativeCenterBusy));
             }
         }
         return result;
@@ -142,7 +160,7 @@ public static class HudManager
 
     private static void RemoveExpired(List<HudEntry> entries, long now)
     {
-        entries.RemoveAll(entry => entry.ExpiresAt <= now);
+        entries.RemoveAll(entry => entry.ExpiresAt.HasValue && entry.ExpiresAt.Value <= now);
     }
 
     private static void RemoveExpiredBusyWindows(long now)
